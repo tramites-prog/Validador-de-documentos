@@ -7,6 +7,9 @@ from google.genai import types
 from pydantic import BaseModel
 from typing import Optional
 
+# -------------------------------------------------------------
+# Configuración
+# -------------------------------------------------------------
 st.set_page_config(page_title="Validador Vehicular", layout="centered")
 
 if "historial_registros" not in st.session_state:
@@ -80,8 +83,9 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
 # -------------------------------------------------------------
-# Lectura de Claves (Nube / Local)
+# LLaves
 # -------------------------------------------------------------
 try:
     LISTA_API_KEYS = st.secrets["API_KEYS"]
@@ -153,6 +157,9 @@ def procesar_con_gemini(partes_archivos, prompt):
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
 
+# -------------------------------------------------------------
+# Vista
+# -------------------------------------------------------------
 st.markdown("""
     <div class="app-card">
         <div class="app-header">
@@ -182,16 +189,30 @@ if st.button("Procesar y Generar Fila"):
                 ]
 
                 prompt = """
-                Analiza los archivos adjuntos (pueden ser 2 o 3 archivos en formato PDF o imágenes: Cédula, Manifiesto y/o Factura):
-                1. Identifica el tipo de cada documento presente.
-                2. Verifica si el NOMBRE coincide entre los documentos disponibles (marca nombre_coincide=True/False).
-                3. Verifica si la CÉDULA coincide entre la cédula/manifiesto y la factura (marca cedula_coincide=True/False).
-                4. Verifica si el número de CHASIS/VIN coincide entre el manifiesto y la factura (si ambos están presentes; de lo contrario marca True si el chasis visible concuerda).
-                5. Si alguna comprobación falla, detalla con precisión la discrepancia en 'detalle_validacion'.
-                6. Extrae los datos exactos para la planilla:
-                   nombres (de la cédula o factura), cedula, n_motor, n_chasis, modelo, placa (pon 'AGREGAR'),
-                   marca, linea, cilindraje, valor_soat ('0'), auxiliar ('N/A'),
-                   direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
+                Analiza exhaustivamente los archivos adjuntos (pueden ser 2 o 3 archivos en formato PDF o imágenes: Cédula de ciudadanía, Manifiesto de aduana y Factura electrónica):
+
+                REGLAS E STRICTAS DE VALIDACIÓN:
+                1. COMPROBACIÓN DE NOMBRE (nombre_coincide):
+                   - Compara el NOMBRE Y APELLIDOS COMPLETOS que figuran en la Cédula/Identificación contra el cliente en la Factura.
+                   - Debes verificar letra por letra. Si falta un segundo nombre, si un apellido es distinto (ej. Pérez vs Yepes), o si hay errores ortográficos/tipográficos en cualquier apellido o nombre, marca OBLIGATORIAMENTE nombre_coincide = False.
+                   - Solo marca nombre_coincide = True si el nombre y los apellidos coinciden exactamente en ambos documentos.
+
+                2. COMPROBACIÓN DE CÉDULA (cedula_coincide):
+                   - Compara el número de documento/cédula en la cédula física vs la factura.
+                   - Debe coincidir dígito por dígito. Marca False si hay alguna diferencia.
+
+                3. COMPROBACIÓN DE CHASIS / VIN (chasis_coincide):
+                   - Compara el número de chasis/VIN entre el Manifiesto de aduana y la Factura.
+                   - Marca False si hay alguna letra o número diferente.
+
+                4. DETALLE DE VALIDACIÓN (detalle_validacion):
+                   - Si alguna de las 3 verificaciones es False, debes explicar explícitamente la discrepancia encontrada. Por ejemplo: "El nombre en la cédula es Maria Pérez pero en la factura figura Maria Yepes".
+
+                5. EXTRACCIÓN DE DATOS:
+                   - Extrae los datos exactos para la planilla:
+                     nombres (usa el nombre completo exacto que aparece en la Cédula), cedula, n_motor, n_chasis, modelo, placa (escribe 'AGREGAR'),
+                     marca, linea, cilindraje, valor_soat ('0'), auxiliar ('N/A'),
+                     direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
                 """
 
                 response = procesar_con_gemini(partes_archivos, prompt)
@@ -212,7 +233,7 @@ if st.button("Procesar y Generar Fila"):
                     st.session_state.historial_registros.append(nueva_fila)
                     st.markdown("""
                         <div class="status-badge-success">
-                            <b>Verificación Correcta:</b> Datos coincidentes en los documentos cargados. Fila agregada.
+                            <b>Verificación Correcta:</b> Nombre, cédula y chasis coinciden perfectamente en los documentos. Fila agregada.
                         </div>
                     """, unsafe_allow_html=True)
                 else:
@@ -228,7 +249,7 @@ if st.button("Procesar y Generar Fila"):
                 st.error(f"Error: {err}")
 
 # -------------------------------------------------------------
-# ÁREA  COPIADO
+# ÁREA DE COPIADO
 # -------------------------------------------------------------
 if st.session_state.historial_registros:
     st.markdown("---")
