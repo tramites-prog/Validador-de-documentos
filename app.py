@@ -80,9 +80,10 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
-# llaves 
-
+# -------------------------------------------------------------
+# Lectura de Claves (Nube / Local)
+# -------------------------------------------------------------
+try:
     LISTA_API_KEYS = st.secrets["API_KEYS"]
 except Exception:
     LISTA_API_KEYS = [
