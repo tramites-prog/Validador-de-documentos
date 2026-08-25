@@ -7,10 +7,7 @@ from google.genai import types
 from pydantic import BaseModel
 from typing import Optional
 
-# -------------------------------------------------------------
-# Configuración de la interfaz
-# -------------------------------------------------------------
-st.set_page_config(page_title="Validador", layout="centered")
+st.set_page_config(page_title="Validador Vehicular", layout="centered")
 
 if "historial_registros" not in st.session_state:
     st.session_state.historial_registros = []
@@ -84,10 +81,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------
-# Lectura de Claves (Nube / Local)
-# -------------------------------------------------------------
-try:
+# llaves 
+
     LISTA_API_KEYS = st.secrets["API_KEYS"]
 except Exception:
     LISTA_API_KEYS = [
@@ -117,7 +112,20 @@ class ValidacionYPlanilla(BaseModel):
     ciudad: Optional[str]
     tipo_de_venta: Optional[str]
 
-def procesar_con_gemini(partes_pdf, prompt):
+def obtener_mime_type(archivo):
+    """Detecta automáticamente el tipo MIME según la extensión."""
+    ext = archivo.name.split('.')[-1].lower()
+    mapa_mime = {
+        'pdf': 'application/pdf',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+        'heic': 'image/heic'
+    }
+    return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
+
+def procesar_con_gemini(partes_archivos, prompt):
     modelos = ["gemini-3.6-flash", "gemini-2.5-pro"]
     ultimo_error = ""
 
@@ -131,7 +139,7 @@ def procesar_con_gemini(partes_pdf, prompt):
             try:
                 response = client.models.generate_content(
                     model=model,
-                    contents=partes_pdf + [prompt],
+                    contents=partes_archivos + [prompt],
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=ValidacionYPlanilla,
@@ -144,48 +152,48 @@ def procesar_con_gemini(partes_pdf, prompt):
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
 
-# -------------------------------------------------------------
-# Vista Principal
-# -------------------------------------------------------------
 st.markdown("""
     <div class="app-card">
         <div class="app-header">
             <h1>Validador de Documentos</h1>
         </div>
-        <div class="app-subtitle">Suba los 3 archivos PDF (Cédula, Manifiesto y Factura en cualquier orden).</div>
+        <div class="app-subtitle">Suba los 2 o 3 archivos (Cédula, Manifiesto y/o Factura en PDF o Imagen).</div>
 """, unsafe_allow_html=True)
 
 archivos_subidos = st.file_uploader(
-    "Selecciona o arrastra los 3 archivos PDF", 
-    type=["pdf"], 
+    "Selecciona o arrastra 2 o 3 archivos (PDF, JPG, PNG, WEBP)", 
+    type=["pdf", "jpg", "jpeg", "png", "webp", "heic"], 
     accept_multiple_files=True
 )
 
 if st.button("Procesar y Generar Fila"):
-    if not archivos_subidos or len(archivos_subidos) != 3:
-        st.warning("Debes seleccionar exactamente los 3 archivos PDF (Cédula, Manifiesto y Factura).")
+    if not archivos_subidos or len(archivos_subidos) not in [2, 3]:
+        st.warning("Debes seleccionar exactamente 2 o 3 archivos (Cédula, Manifiesto y/o Factura).")
     else:
-        with st.spinner("Analizando y comparando los 3 documentos..."):
+        with st.spinner("Analizando y comparando los documentos..."):
             try:
-                partes_pdf = [
-                    types.Part.from_bytes(data=f.read(), mime_type="application/pdf")
+                partes_archivos = [
+                    types.Part.from_bytes(
+                        data=f.read(), 
+                        mime_type=obtener_mime_type(f)
+                    )
                     for f in archivos_subidos
                 ]
 
                 prompt = """
-                Analiza los 3 archivos PDF adjuntos (Cédula de ciudadanía, Manifiesto de aduana y Factura electrónica):
-                1. Identifica qué archivo corresponde a cada documento.
-                2. Verifica si el NOMBRE del cliente coincide entre la cédula y la factura (marca nombre_coincide=True/False).
-                3. Verifica si la CÉDULA coincide entre la cédula física y la factura (marca cedula_coincide=True/False).
-                4. Verifica si el número de CHASIS/VIN coincide entre el manifiesto y la factura (marca chasis_coincide=True/False).
-                5. Si alguna comprobación falla, detalla con precisión el descuadre en 'detalle_validacion'.
+                Analiza los archivos adjuntos (pueden ser 2 o 3 archivos en formato PDF o imágenes: Cédula, Manifiesto y/o Factura):
+                1. Identifica el tipo de cada documento presente.
+                2. Verifica si el NOMBRE coincide entre los documentos disponibles (marca nombre_coincide=True/False).
+                3. Verifica si la CÉDULA coincide entre la cédula/manifiesto y la factura (marca cedula_coincide=True/False).
+                4. Verifica si el número de CHASIS/VIN coincide entre el manifiesto y la factura (si ambos están presentes; de lo contrario marca True si el chasis visible concuerda).
+                5. Si alguna comprobación falla, detalla con precisión la discrepancia en 'detalle_validacion'.
                 6. Extrae los datos exactos para la planilla:
-                   nombres (de la cédula), cedula, n_motor, n_chasis, modelo, placa (pon 'AGREGAR'),
+                   nombres (de la cédula o factura), cedula, n_motor, n_chasis, modelo, placa (pon 'AGREGAR'),
                    marca, linea, cilindraje, valor_soat ('0'), auxiliar ('N/A'),
                    direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
                 """
 
-                response = procesar_con_gemini(partes_pdf, prompt)
+                response = procesar_con_gemini(partes_archivos, prompt)
                 datos = json.loads(response.text)
 
                 orden_columnas = [
@@ -196,14 +204,14 @@ if st.button("Procesar y Generar Fila"):
 
                 nueva_fila = {col: datos.get(col, "") for col in orden_columnas}
 
-                # Comprobación de las tres reglas
+                # Comprobación
                 es_valido = datos.get("nombre_coincide") and datos.get("cedula_coincide") and datos.get("chasis_coincide")
 
                 if es_valido:
                     st.session_state.historial_registros.append(nueva_fila)
                     st.markdown("""
                         <div class="status-badge-success">
-                            <b>Verificación Correcta:</b> Nombre, cédula y chasis coinciden en los 3 documentos. Fila agregada.
+                            <b>Verificación Correcta:</b> Datos coincidentes en los documentos cargados. Fila agregada.
                         </div>
                     """, unsafe_allow_html=True)
                 else:
@@ -219,7 +227,7 @@ if st.button("Procesar y Generar Fila"):
                 st.error(f"Error: {err}")
 
 # -------------------------------------------------------------
-# ÁREA DE COPIADO
+# ÁREA  COPIADO
 # -------------------------------------------------------------
 if st.session_state.historial_registros:
     st.markdown("---")
