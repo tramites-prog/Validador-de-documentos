@@ -134,7 +134,7 @@ def obtener_mime_type(archivo):
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
 def procesar_con_gemini(partes_archivos, prompt):
-    modelos = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    modelos = ["gemini-2.5-flash", "gemini-2.0-flash"]
     ultimo_error = ""
 
     for key in LISTA_API_KEYS:
@@ -159,7 +159,6 @@ def procesar_con_gemini(partes_archivos, prompt):
                 continue
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
-
 # -------------------------------------------------------------
 # Vista
 # -------------------------------------------------------------
