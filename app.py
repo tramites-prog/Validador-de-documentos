@@ -137,8 +137,8 @@ def obtener_mime_type(archivo):
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
 def procesar_con_gemini(partes_archivos, prompt):
-    # Usamos gemini-2.5-flash que permite hasta 1,500 solicitudes diarias en el Plan Gratuito
-    modelos = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    # Usamos únicamente modelos activos en la API oficial de Google
+    modelos = ["gemini-2.5-flash", "gemini-2.0-flash"]
     ultimo_error = ""
 
     for key in LISTA_API_KEYS:
@@ -167,12 +167,12 @@ def procesar_con_gemini(partes_archivos, prompt):
                 except Exception as e:
                     ultimo_error = str(e)
                     
-                    # Si la clave sobrepasó la cuota (429), salta de inmediato a probar la siguiente API Key
+                    # Si la clave sobrepasó la cuota o el límite de velocidad (429), pasa a probar la SIGUIENTE CLAVE
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                         clave_agotada = True
                         break
                     
-                    # Si el servidor de Google está saturado (503), espera 2 segundos
+                    # Si el servidor de Google está ocupado (503), espera 2 segundos y reintenta
                     elif "503" in str(e) or "UNAVAILABLE" in str(e):
                         time.sleep(2)
                         continue
