@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 # -------------------------------------------------------------
-# Configuración
+# Configuración de la interfaz
 # -------------------------------------------------------------
 st.set_page_config(page_title="Validador Vehicular", layout="centered")
 
@@ -17,6 +17,9 @@ if "historial_registros" not in st.session_state:
 
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
+
+if "ultimo_mensaje" not in st.session_state:
+    st.session_state.ultimo_mensaje = None
 
 st.markdown("""
     <style>
@@ -88,7 +91,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# LLaves
+# Lectura de Claves (Nube / Local)
 # -------------------------------------------------------------
 try:
     LISTA_API_KEYS = st.secrets["API_KEYS"]
@@ -159,8 +162,9 @@ def procesar_con_gemini(partes_archivos, prompt):
                 continue
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
+
 # -------------------------------------------------------------
-# Vista
+# Vista Principal
 # -------------------------------------------------------------
 st.markdown("""
     <div class="app-card">
@@ -194,7 +198,7 @@ if st.button("Procesar y Generar Fila"):
                 prompt = """
                 Analiza exhaustivamente los archivos adjuntos (pueden ser 2 o 3 archivos en formato PDF o imágenes: Cédula de ciudadanía, Manifiesto de aduana y Factura electrónica):
 
-                REGLAS E STRICTAS DE VALIDACIÓN:
+                REGLAS ESTRICTAS DE VALIDACIÓN:
                 1. COMPROBACIÓN DE NOMBRE (nombre_coincide):
                    - Compara el NOMBRE Y APELLIDOS COMPLETOS que figuran en la Cédula/Identificación contra el cliente en la Factura.
                    - Debes verificar letra por letra. Si falta un segundo nombre, si un apellido es distinto (ej. Pérez vs Yepes), o si hay errores ortográficos/tipográficos en cualquier apellido o nombre, marca OBLIGATORIAMENTE nombre_coincide = False.
@@ -229,30 +233,41 @@ if st.button("Procesar y Generar Fila"):
 
                 nueva_fila = {col: datos.get(col, "") for col in orden_columnas}
 
-                # Comprobación
+                # Comprobación estricta
                 es_valido = datos.get("nombre_coincide") and datos.get("cedula_coincide") and datos.get("chasis_coincide")
 
                 if es_valido:
                     st.session_state.historial_registros.append(nueva_fila)
                     st.session_state.uploader_key += 1
+                    st.session_state.ultimo_mensaje = {
+                        "tipo": "exito",
+                        "texto": "<b>Verificación Correcta:</b> Nombre, cédula y chasis coinciden perfectamente en los documentos. Fila agregada."
+                    }
                     st.rerun()
-                    
-                    st.markdown("""
-                        <div class="status-badge-success">
-                            <b>Verificación Correcta:</b> Nombre, cédula y chasis coinciden perfectamente en los documentos. Fila agregada.
-                        </div>
-                    """, unsafe_allow_html=True)
                 else:
                     detalle = datos.get("detalle_validacion", "Inconsistencia detectada en los documentos.")
-                    st.markdown(f"""
-                        <div class="status-badge-warning">
-                            <b>Descuadre Detectado:</b> {detalle}<br>
-                            <i>Atención: Este registro NO se agregó al área de copiado.</i>
-                        </div>
-                    """, unsafe_allow_html=True)
+                    st.session_state.ultimo_mensaje = {
+                        "tipo": "advertencia",
+                        "texto": f"<b>Descuadre Detectado:</b> {detalle}<br><i>Atención: Este registro NO se agregó al área de copiado.</i>"
+                    }
 
             except Exception as err:
                 st.error(f"Error: {err}")
+
+# Mostrar el resultado del procesamiento
+if st.session_state.ultimo_mensaje:
+    if st.session_state.ultimo_mensaje["tipo"] == "exito":
+        st.markdown(f"""
+            <div class="status-badge-success">
+                {st.session_state.ultimo_mensaje['texto']}
+            </div>
+        """, unsafe_allow_html=True)
+    elif st.session_state.ultimo_mensaje["tipo"] == "advertencia":
+        st.markdown(f"""
+            <div class="status-badge-warning">
+                {st.session_state.ultimo_mensaje['texto']}
+            </div>
+        """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
 # ÁREA DE COPIADO
@@ -278,6 +293,7 @@ if st.session_state.historial_registros:
 
     if st.button("Limpiar Lista"):
         st.session_state.historial_registros = []
+        st.session_state.ultimo_mensaje = None
         st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
