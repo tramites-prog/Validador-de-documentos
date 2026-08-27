@@ -137,7 +137,7 @@ def obtener_mime_type(archivo):
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
 def procesar_con_gemini(partes_archivos, prompt):
-    # Modelos activos en orden de preferencia
+    # Lista de modelos activos en orden de preferencia
     modelos = ["gemini-3.6-flash", "gemini-2.5-flash"]
     ultimo_error = ""
 
@@ -148,8 +148,13 @@ def procesar_con_gemini(partes_archivos, prompt):
 
         client = genai.Client(api_key=key_limpia)
         
+        # Bandera para saber si la clave actual se agotó por límite de tasa (429)
+        clave_agotada = False
+
         for model in modelos:
-            # Reintenta hasta 2 veces si hay un problema temporal de red o saturación 503
+            if clave_agotada:
+                break
+
             for intento in range(2):
                 try:
                     response = client.models.generate_content(
@@ -164,20 +169,17 @@ def procesar_con_gemini(partes_archivos, prompt):
                 except Exception as e:
                     ultimo_error = str(e)
                     
-                    # Si la clave sobrepasó la cuota (429), sal del bucle del modelo para pasar a la SIGUIENTE CLAVE
+                    # Si la clave sobrepasó la cuota o el límite de velocidad (429), rompe el bucle para pasar A LA SIGUIENTE CLAVE
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        clave_agotada = True
                         break
                     
-                    # Si el servidor de Google está saturado (503), espera 2 segundos y reintenta una vez
+                    # Si el servidor de Google está saturado (503), espera 2 segundos y reintenta
                     elif "503" in str(e) or "UNAVAILABLE" in str(e):
                         time.sleep(2)
                         continue
                     else:
                         break
-            
-            # Si rompió por error 429, pasa directamente a probar la siguiente API Key
-            if "429" in ultimo_error or "RESOURCE_EXHAUSTED" in ultimo_error:
-                break
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
 # -------------------------------------------------------------
