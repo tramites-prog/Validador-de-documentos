@@ -137,7 +137,8 @@ def obtener_mime_type(archivo):
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
 def procesar_con_gemini(partes_archivos, prompt):
-    modelos = ["gemini-3.6-flash"]
+    # Modelos activos en orden de preferencia
+    modelos = ["gemini-3.6-flash", "gemini-2.5-flash"]
     ultimo_error = ""
 
     for key in LISTA_API_KEYS:
@@ -146,8 +147,10 @@ def procesar_con_gemini(partes_archivos, prompt):
             continue
 
         client = genai.Client(api_key=key_limpia)
+        
         for model in modelos:
-            for intento in range(3):
+            # Reintenta hasta 2 veces si hay un problema temporal de red o saturación 503
+            for intento in range(2):
                 try:
                     response = client.models.generate_content(
                         model=model,
@@ -160,11 +163,21 @@ def procesar_con_gemini(partes_archivos, prompt):
                     return response
                 except Exception as e:
                     ultimo_error = str(e)
-                    if "503" in str(e) or "UNAVAILABLE" in str(e):
-                        time.sleep(2) 
+                    
+                    # Si la clave sobrepasó la cuota (429), sal del bucle del modelo para pasar a la SIGUIENTE CLAVE
+                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        break
+                    
+                    # Si el servidor de Google está saturado (503), espera 2 segundos y reintenta una vez
+                    elif "503" in str(e) or "UNAVAILABLE" in str(e):
+                        time.sleep(2)
                         continue
                     else:
-                        break 
+                        break
+            
+            # Si rompió por error 429, pasa directamente a probar la siguiente API Key
+            if "429" in ultimo_error or "RESOURCE_EXHAUSTED" in ultimo_error:
+                break
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
 # -------------------------------------------------------------
