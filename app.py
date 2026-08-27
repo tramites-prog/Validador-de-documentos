@@ -137,7 +137,11 @@ def obtener_mime_type(archivo):
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
 def procesar_con_gemini(partes_archivos, prompt):
-    modelos = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    # Google va restringiendo el acceso "para usuarios nuevos" a modelos viejos
+    # sin previo aviso (esto NO es un tema de cuota, es 404 permanente para esa llave).
+    # Usamos los modelos actuales recomendados; si tu cuenta más antigua sí tiene
+    # acceso legado a 2.5, lo dejamos como último respaldo por si acaso.
+    modelos = ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
     ultimo_error = ""
 
     for key in LISTA_API_KEYS:
@@ -167,13 +171,13 @@ def procesar_con_gemini(partes_archivos, prompt):
                     ultimo_error = str(e)
 
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        clave_agotada = True
+                        clave_agotada = True   # esta llave sí se quedó sin cupo, salta a la siguiente
                         break
                     elif "503" in str(e) or "UNAVAILABLE" in str(e):
                         time.sleep(2)
                         continue
                     elif "404" in str(e) or "NOT_FOUND" in str(e):
-                        break
+                        break  # este modelo no existe para esta llave, prueba el siguiente modelo
                     else:
                         break
 
