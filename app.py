@@ -15,6 +15,9 @@ st.set_page_config(page_title="Validador Vehicular", layout="centered")
 if "historial_registros" not in st.session_state:
     st.session_state.historial_registros = []
 
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -171,7 +174,8 @@ st.markdown("""
 archivos_subidos = st.file_uploader(
     "Selecciona o arrastra 2 o 3 archivos (PDF, JPG, PNG, WEBP)", 
     type=["pdf", "jpg", "jpeg", "png", "webp", "heic"], 
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key=f"uploader_{st.session_state.uploader_key}"
 )
 
 if st.button("Procesar y Generar Fila"):
@@ -231,6 +235,9 @@ if st.button("Procesar y Generar Fila"):
 
                 if es_valido:
                     st.session_state.historial_registros.append(nueva_fila)
+                    st.session_state.uploader_key += 1
+                    st.rerun()
+                    
                     st.markdown("""
                         <div class="status-badge-success">
                             <b>Verificación Correcta:</b> Nombre, cédula y chasis coinciden perfectamente en los documentos. Fila agregada.
