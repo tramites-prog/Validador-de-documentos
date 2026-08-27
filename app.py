@@ -147,22 +147,26 @@ def procesar_con_gemini(partes_archivos, prompt):
 
         client = genai.Client(api_key=key_limpia)
         for model in modelos:
-            try:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=partes_archivos + [prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=ValidacionYPlanilla,
-                    ),
-                )
-                return response
-            except Exception as e:
-                ultimo_error = str(e)
-                continue
+            for intento in range(3):
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=partes_archivos + [prompt],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=ValidacionYPlanilla,
+                        ),
+                    )
+                    return response
+                except Exception as e:
+                    ultimo_error = str(e)
+                    if "503" in str(e) or "UNAVAILABLE" in str(e):
+                        time.sleep(2) 
+                        continue
+                    else:
+                        break 
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
-
 # -------------------------------------------------------------
 # Vista Principal
 # -------------------------------------------------------------
@@ -233,7 +237,7 @@ if st.button("Procesar y Generar Fila"):
 
                 nueva_fila = {col: datos.get(col, "") for col in orden_columnas}
 
-                # Comprobación estricta
+                # Comprobación
                 es_valido = datos.get("nombre_coincide") and datos.get("cedula_coincide") and datos.get("chasis_coincide")
 
                 if es_valido:
