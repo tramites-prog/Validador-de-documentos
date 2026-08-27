@@ -134,7 +134,7 @@ def obtener_mime_type(archivo):
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
 def procesar_con_gemini(partes_archivos, prompt):
-    modelos = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    modelos = ["gemini-3.6-flash"]
     ultimo_error = ""
 
     for key in LISTA_API_KEYS:
