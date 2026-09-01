@@ -138,8 +138,8 @@ def obtener_mime_type(archivo):
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
 def procesar_con_gemini(partes_archivos, prompt):
-    # Usamos gemini-3.6-flash como prioridad para máxima precisión de visión
-    modelos = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+
+    modelos = ["gemini-2.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
     ultimo_error = ""
 
     for key in LISTA_API_KEYS:
@@ -148,12 +148,8 @@ def procesar_con_gemini(partes_archivos, prompt):
             continue
 
         client = genai.Client(api_key=key_limpia)
-        clave_agotada = False
 
         for model in modelos:
-            if clave_agotada:
-                break
-
             for intento in range(2):
                 try:
                     response = client.models.generate_content(
@@ -169,7 +165,6 @@ def procesar_con_gemini(partes_archivos, prompt):
                     ultimo_error = str(e)
 
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        clave_agotada = True
                         break
                     elif "503" in str(e) or "UNAVAILABLE" in str(e):
                         time.sleep(2)
