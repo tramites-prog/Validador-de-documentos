@@ -105,6 +105,7 @@ class ValidacionYPlanilla(BaseModel):
     nombre_coincide: bool
     cedula_coincide: bool
     chasis_coincide: bool
+    motor_coincide: bool
     detalle_validacion: str
     nombres: Optional[str]
     cedula: Optional[str]
@@ -123,25 +124,9 @@ class ValidacionYPlanilla(BaseModel):
     ciudad: Optional[str]
     tipo_de_venta: Optional[str]
 
-def obtener_mime_type(archivo):
-    """Detecta automáticamente el tipo MIME según la extensión."""
-    ext = archivo.name.split('.')[-1].lower()
-    mapa_mime = {
-        'pdf': 'application/pdf',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'webp': 'image/webp',
-        'heic': 'image/heic'
-    }
-    return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
-
 def procesar_con_gemini(partes_archivos, prompt):
-    # Google va restringiendo el acceso "para usuarios nuevos" a modelos viejos
-    # sin previo aviso (esto NO es un tema de cuota, es 404 permanente para esa llave).
-    # Usamos los modelos actuales recomendados; si tu cuenta más antigua sí tiene
-    # acceso legado a 2.5, lo dejamos como último respaldo por si acaso.
-    modelos = ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    # Usamos gemini-3.6-flash como prioridad para máxima precisión de visión
+    modelos = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
     ultimo_error = ""
 
     for key in LISTA_API_KEYS:
@@ -169,37 +154,20 @@ def procesar_con_gemini(partes_archivos, prompt):
                     return response
                 except Exception as e:
                     ultimo_error = str(e)
-
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        clave_agotada = True   # esta llave sí se quedó sin cupo, salta a la siguiente
+                        clave_agotada = True
                         break
                     elif "503" in str(e) or "UNAVAILABLE" in str(e):
                         time.sleep(2)
                         continue
                     elif "404" in str(e) or "NOT_FOUND" in str(e):
-                        break  # este modelo no existe para esta llave, prueba el siguiente modelo
+                        break
                     else:
                         break
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
-# -------------------------------------------------------------
-# Vista Principal
-# -------------------------------------------------------------
-st.markdown("""
-    <div class="app-card">
-        <div class="app-header">
-            <h1>Validador de Documentos</h1>
-        </div>
-        <div class="app-subtitle">Suba los 2 o 3 archivos (Cédula, Manifiesto y/o Factura en PDF o Imagen).</div>
-""", unsafe_allow_html=True)
 
-archivos_subidos = st.file_uploader(
-    "Selecciona o arrastra 2 o 3 archivos (PDF, JPG, PNG, WEBP)", 
-    type=["pdf", "jpg", "jpeg", "png", "webp", "heic"], 
-    accept_multiple_files=True,
-    key=f"uploader_{st.session_state.uploader_key}"
-)
-
+# En el evento del botón:
 if st.button("Procesar y Generar Fila"):
     if not archivos_subidos or len(archivos_subidos) not in [2, 3]:
         st.warning("Debes seleccionar exactamente 2 o 3 archivos (Cédula, Manifiesto y/o Factura).")
@@ -215,28 +183,31 @@ if st.button("Procesar y Generar Fila"):
                 ]
 
                 prompt = """
-                Analiza exhaustivamente los archivos adjuntos (pueden ser 2 o 3 archivos en formato PDF o imágenes: Cédula de ciudadanía, Manifiesto de aduana y Factura electrónica):
+                Analiza exhaustivamente los 2 o 3 archivos adjuntos (Cédula de ciudadanía, Manifiesto de aduana y/o Factura electrónica):
 
-                REGLAS ESTRICTAS DE VALIDACIÓN:
+                REGLAS ESTRICTAS DE VALIDACIÓN (Si una sola falla, NO puedes aprobar la validación):
                 1. COMPROBACIÓN DE NOMBRE (nombre_coincide):
-                   - Compara el NOMBRE Y APELLIDOS COMPLETOS que figuran en la Cédula/Identificación contra el cliente en la Factura.
-                   - Debes verificar letra por letra. Si falta un segundo nombre, si un apellido es distinto (ej. Pérez vs Yepes), o si hay errores ortográficos/tipográficos en cualquier apellido o nombre, marca OBLIGATORIAMENTE nombre_coincide = False.
-                   - Solo marca nombre_coincide = True si el nombre y los apellidos coinciden exactamente en ambos documentos.
+                   - Compara el NOMBRE Y APELLIDOS COMPLETOS de la Cédula/Identificación contra el cliente en la Factura.
+                   - Compara letra por letra. Si difiere en un nombre, un apellido o una letra, marca nombre_coincide = False.
 
                 2. COMPROBACIÓN DE CÉDULA (cedula_coincide):
                    - Compara el número de documento/cédula en la cédula física vs la factura.
-                   - Debe coincidir dígito por dígito. Marca False si hay alguna diferencia.
+                   - Debe coincidir exactamente dígito por dígito. Marca cedula_coincide = False si hay diferencias.
 
                 3. COMPROBACIÓN DE CHASIS / VIN (chasis_coincide):
-                   - Compara el número de chasis/VIN entre el Manifiesto de aduana y la Factura.
-                   - Marca False si hay alguna letra o número diferente.
+                   - Compara el número de Chasis/VIN del Manifiesto de aduana (SERIAL No. / VIN NO. / No. CHASIS) contra el Chasis de la Factura (CH: ...).
+                   - Compara carácter por carácter. Si un solo carácter es diferente, marca chasis_coincide = False.
 
-                4. DETALLE DE VALIDACIÓN (detalle_validacion):
-                   - Si alguna de las 3 verificaciones es False, debes explicar explícitamente la discrepancia encontrada. Por ejemplo: "El nombre en la cédula es Maria Pérez pero en la factura figura Maria Yepes".
+                4. COMPROBACIÓN DE MOTOR (motor_coincide):
+                   - Compara el número de Motor del Manifiesto (MOTOR No.) contra el Motor de la Factura (MT: ...).
+                   - Compara carácter por carácter. Si un solo carácter es diferente, marca motor_coincide = False.
 
-                5. EXTRACCIÓN DE DATOS:
-                   - Extrae los datos exactos para la planilla:
-                     nombres (usa el nombre completo exacto que aparece en la Cédula), cedula, n_motor, n_chasis, modelo, placa (escribe 'AGREGAR'),
+                5. DETALLE DE VALIDACIÓN (detalle_validacion):
+                   - Si alguna comprobación es False, explica claramente la diferencia. Ejemplo: "El chasis en el manifiesto es 9GJB37PF8VP227691 pero en la factura figura 9GJB37PFXVP230091".
+
+                6. EXTRACCIÓN DE DATOS PARA LA PLANILLA:
+                   - Extrae los datos usando la información correcta:
+                     nombres (de la Cédula), cedula, n_motor (del Manifiesto), n_chasis (del Manifiesto), modelo, placa ('AGREGAR'),
                      marca, linea, cilindraje, valor_soat ('0'), auxiliar ('N/A'),
                      direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
                 """
@@ -252,15 +223,20 @@ if st.button("Procesar y Generar Fila"):
 
                 nueva_fila = {col: datos.get(col, "") for col in orden_columnas}
 
-                # Comprobación
-                es_valido = datos.get("nombre_coincide") and datos.get("cedula_coincide") and datos.get("chasis_coincide")
+                # Verificación cuádruple estricta
+                es_valido = (
+                    datos.get("nombre_coincide") == True and 
+                    datos.get("cedula_coincide") == True and 
+                    datos.get("chasis_coincide") == True and 
+                    datos.get("motor_coincide") == True
+                )
 
                 if es_valido:
                     st.session_state.historial_registros.append(nueva_fila)
                     st.session_state.uploader_key += 1
                     st.session_state.ultimo_mensaje = {
                         "tipo": "exito",
-                        "texto": "<b>Verificación Correcta:</b> Nombre, cédula y chasis coinciden perfectamente en los documentos. Fila agregada."
+                        "texto": "<b>Verificación Correcta:</b> Nombre, cédula, chasis y motor coinciden perfectamente. Fila agregada."
                     }
                     st.rerun()
                 else:
