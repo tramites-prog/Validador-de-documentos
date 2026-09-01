@@ -124,6 +124,19 @@ class ValidacionYPlanilla(BaseModel):
     ciudad: Optional[str]
     tipo_de_venta: Optional[str]
 
+def obtener_mime_type(archivo):
+    """Detecta automáticamente el tipo MIME según la extensión."""
+    ext = archivo.name.split('.')[-1].lower()
+    mapa_mime = {
+        'pdf': 'application/pdf',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+        'heic': 'image/heic'
+    }
+    return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
+
 def procesar_con_gemini(partes_archivos, prompt):
     # Usamos gemini-3.6-flash como prioridad para máxima precisión de visión
     modelos = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
@@ -154,6 +167,7 @@ def procesar_con_gemini(partes_archivos, prompt):
                     return response
                 except Exception as e:
                     ultimo_error = str(e)
+
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                         clave_agotada = True
                         break
@@ -167,7 +181,24 @@ def procesar_con_gemini(partes_archivos, prompt):
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
 
-# En el evento del botón:
+# -------------------------------------------------------------
+# Vista Principal
+# -------------------------------------------------------------
+st.markdown("""
+    <div class="app-card">
+        <div class="app-header">
+            <h1>Validador de Documentos</h1>
+        </div>
+        <div class="app-subtitle">Suba los 2 o 3 archivos (Cédula, Manifiesto y/o Factura en PDF o Imagen).</div>
+""", unsafe_allow_html=True)
+
+archivos_subidos = st.file_uploader(
+    "Selecciona o arrastra 2 o 3 archivos (PDF, JPG, PNG, WEBP)", 
+    type=["pdf", "jpg", "jpeg", "png", "webp", "heic"], 
+    accept_multiple_files=True,
+    key=f"uploader_{st.session_state.uploader_key}"
+)
+
 if st.button("Procesar y Generar Fila"):
     if not archivos_subidos or len(archivos_subidos) not in [2, 3]:
         st.warning("Debes seleccionar exactamente 2 o 3 archivos (Cédula, Manifiesto y/o Factura).")
