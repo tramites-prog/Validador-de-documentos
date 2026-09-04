@@ -150,7 +150,7 @@ def procesar_con_gemini(partes_archivos, prompt):
         client = genai.Client(api_key=key_limpia)
 
         for model in modelos:
-            for intento in range(2):
+            for intento in range(3):  # 3 intentos por modelo en vez de 2
                 try:
                     response = client.models.generate_content(
                         model=model,
@@ -165,12 +165,13 @@ def procesar_con_gemini(partes_archivos, prompt):
                     ultimo_error = str(e)
 
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        break
+                        break  # cupo agotado para este modelo, prueba el siguiente
                     elif "503" in str(e) or "UNAVAILABLE" in str(e):
-                        time.sleep(2)
+                        # Saturación temporal de Google: espera creciente (2s, 4s, 8s)
+                        time.sleep(2 * (intento + 1))
                         continue
                     elif "404" in str(e) or "NOT_FOUND" in str(e):
-                        break
+                        break  # modelo no disponible para esta llave
                     else:
                         break
 
