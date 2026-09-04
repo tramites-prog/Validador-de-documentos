@@ -246,15 +246,15 @@ if st.button("Procesar y Generar Fila"):
                    direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
                 """
 
-                response = procesar_con_gemini(partes_archivos, prompt)
+            response = procesar_con_gemini(partes_archivos, prompt)
                 datos = json.loads(response.text)
 
-            nombre_coincide = normalizar_texto(datos.get("nombre_cedula")) == normalizar_texto(datos.get("nombre_factura"))
-            cedula_coincide = limpiar_documento(datos.get("cedula_documento")) == limpiar_documento(datos.get("cedula_factura"))
-            chasis_coincide = limpiar_documento(datos.get("chasis_manifiesto")) == limpiar_documento(datos.get("chasis_factura")
-            motor_coincide = limpiar_documento(datos.get("motor_manifiesto")) == limpiar_documento(datos.get("motor_factura"))
-            
-            es_valido = nombre_coincide and cedula_coincide and chasis_coincide and motor_coincide
+                nombre_coincide = normalizar_texto(datos.get("nombre_cedula")) == normalizar_texto(datos.get("nombre_factura"))
+                cedula_coincide = limpiar_documento(datos.get("cedula_documento")) == limpiar_documento(datos.get("cedula_factura"))
+                chasis_coincide = limpiar_documento(datos.get("chasis_manifiesto")) == limpiar_documento(datos.get("chasis_factura"))
+                motor_coincide = limpiar_documento(datos.get("motor_manifiesto")) == limpiar_documento(datos.get("motor_factura"))
+                
+                es_valido = nombre_coincide and cedula_coincide and chasis_coincide and motor_coincide
 
                 orden_columnas = [
                     "nombres", "cedula", "n_motor", "n_chasis", "modelo", "placa",
