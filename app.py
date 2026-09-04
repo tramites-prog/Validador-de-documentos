@@ -153,6 +153,25 @@ def limpiar_documento(valor):
     # Conserva solo letras y números (elimina ., -, espacios)
     return re.sub(r'[^A-Z0-9]', '', valor.upper().strip())
 
+def comparar_nombres_exactos_sin_orden(nombre_cedula, nombre_factura):
+    """Verifica que todas las palabras presentes en la factura estén en la cédula
+    exactamente iguales (incluyendo 'DE', 'LA', etc.), sin importar el orden."""
+    if not nombre_cedula or not nombre_factura:
+        return False
+
+    palabras_cedula = set(nombre_cedula.upper().split())
+    palabras_factura = set(nombre_factura.upper().split())
+
+    if not palabras_cedula or not palabras_factura:
+        return False
+
+    palabras_coincidentes = palabras_factura.intersection(palabras_cedula)
+    
+    es_subconjunto_valido = palabras_factura.issubset(palabras_cedula) or palabras_cedula.issubset(palabras_factura)
+    porcentaje_coincidencia = len(palabras_coincidentes) / max(len(palabras_cedula), len(palabras_factura))
+
+    return es_subconjunto_valido and porcentaje_coincidencia >= 0.5
+
 
 def procesar_con_gemini(partes_archivos, prompt):
 
@@ -249,7 +268,7 @@ if st.button("Procesar y Generar Fila"):
                 response = procesar_con_gemini(partes_archivos, prompt)
                 datos = json.loads(response.text)
 
-                nombre_coincide = normalizar_texto(datos.get("nombre_cedula")) == normalizar_texto(datos.get("nombre_factura"))
+                nombre_coincide = comparar_nombres_exactos_sin_orden(datos.get("nombre_cedula"), datos.get("nombre_factura"))
                 cedula_coincide = limpiar_documento(datos.get("cedula_documento")) == limpiar_documento(datos.get("cedula_factura"))
                 chasis_coincide = limpiar_documento(datos.get("chasis_manifiesto")) == limpiar_documento(datos.get("chasis_factura"))
                 motor_coincide = limpiar_documento(datos.get("motor_manifiesto")) == limpiar_documento(datos.get("motor_factura"))
