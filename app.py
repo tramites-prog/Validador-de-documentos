@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import pandas as pd
 import streamlit as st
@@ -138,6 +139,20 @@ def normalizar(valor):
     (evita falsos negativos por ' Cindy' vs 'Cindy' o 'cindy' vs 'CINDY')."""
     return (valor or "").strip().upper()
 
+def normalizar_texto(valor):
+    """Limpia espacios extras y convierte a mayúsculas."""
+    if not valor:
+        return ""
+    return " ".join(valor.strip().upper().split())
+
+def limpiar_documento(valor):
+    """Elimina puntos, guiones, espacios y letras para comparar solo números/caracteres clave.
+    Sirve para Cédulas, Cédula de Extranjería, TI, Pasaportes o NIT."""
+    if not valor:
+        return ""
+    # Conserva solo letras y números (elimina ., -, espacios)
+    return re.sub(r'[^A-Z0-9]', '', valor.upper().strip())
+
 
 def procesar_con_gemini(partes_archivos, prompt):
 
@@ -208,23 +223,24 @@ if st.button("Procesar y Generar Fila"):
                 ]
 
                 prompt = """
-                Analiza exhaustivamente los 2 o 3 archivos adjuntos (Cédula de ciudadanía, Manifiesto de aduana y/o Factura electrónica).
-
-                Tu única tarea es EXTRAER, con la máxima fidelidad posible, exactamente lo que está escrito en cada documento,
-                SIN corregir, SIN autocompletar y SIN decidir si coinciden entre sí (eso no te corresponde):
-
-                1. De la CÉDULA: el nombre y apellidos completos tal como aparecen (nombre_cedula), y el número de documento (cedula_documento).
-
-                2. De la FACTURA: el nombre y apellidos completos del cliente tal como aparecen ahí (nombre_factura), el número de
-                   cédula del cliente en la factura (cedula_factura), el número de chasis (campo "CH:") tal cual (chasis_factura),
-                   y el número de motor (campo "MT:") tal cual (motor_factura).
-
-                3. Del MANIFIESTO DE ADUANA: el número de Chasis/VIN (SERIAL No. / VIN NO. / No. CHASIS) tal cual (chasis_manifiesto),
-                   y el número de Motor (MOTOR No.) tal cual (motor_manifiesto).
-
-                Transcribe cada valor carácter por carácter exactamente como se ve en la imagen, incluyendo guiones o espacios si los hay.
-                Si algún dato no aparece en el documento, deja el campo vacío en vez de inventarlo.
-
+                Analiza exhaustivamente los 2 o 3 archivos adjuntos (Documento de Identificación, Manifiesto de aduana y/o Factura electrónica).
+                
+                Tu única tarea es EXTRAER exactamente lo que está escrito en cada documento sin juzgar si coinciden entre sí:
+                
+                1. Del DOCUMENTO DE IDENTIFICACIÓN (Cédula de ciudadanía, Cédula de extranjería, Tarjeta de identidad, Pasaporte o RUT/NIT):
+                   - extrae el nombre completo o razón social tal cual aparece (nombre_cedula).
+                   - extrae el número de documento tal cual aparece, incluyendo puntos si los tiene (cedula_documento).
+                
+                2. De la FACTURA ELECTRONICA:
+                   - extrae el nombre completo del cliente o razón social (nombre_factura).
+                   - extrae el número de cédula/NIT del cliente (cedula_factura).
+                   - extrae el número de chasis (campo "CH:") tal cual (chasis_factura).
+                   - extrae el número de motor (campo "MT:") tal cual (motor_factura).
+                
+                3. Del MANIFIESTO DE ADUANA:
+                   - extrae el número de Chasis/VIN (SERIAL No. / VIN NO. / No. CHASIS) (chasis_manifiesto).
+                   - extrae el número de Motor (MOTOR No.) (motor_manifiesto).
+                
                 4. EXTRACCIÓN DE DATOS ADICIONALES PARA LA PLANILLA:
                    modelo, placa ('AGREGAR'), marca, linea, cilindraje, valor_soat ('0'), auxiliar ('N/A'),
                    direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
@@ -233,12 +249,12 @@ if st.button("Procesar y Generar Fila"):
                 response = procesar_con_gemini(partes_archivos, prompt)
                 datos = json.loads(response.text)
 
-                nombre_coincide = normalizar(datos.get("nombre_cedula")) == normalizar(datos.get("nombre_factura"))
-                cedula_coincide = normalizar(datos.get("cedula_documento")) == normalizar(datos.get("cedula_factura"))
-                chasis_coincide = normalizar(datos.get("chasis_manifiesto")) == normalizar(datos.get("chasis_factura"))
-                motor_coincide = normalizar(datos.get("motor_manifiesto")) == normalizar(datos.get("motor_factura"))
-
-                es_valido = nombre_coincide and cedula_coincide and chasis_coincide and motor_coincide
+            nombre_coincide = normalizar_texto(datos.get("nombre_cedula")) == normalizar_texto(datos.get("nombre_factura"))
+            cedula_coincide = limpiar_documento(datos.get("cedula_documento")) == limpiar_documento(datos.get("cedula_factura"))
+            chasis_coincide = limpiar_documento(datos.get("chasis_manifiesto")) == limpiar_documento(datos.get("chasis_factura")
+            motor_coincide = limpiar_documento(datos.get("motor_manifiesto")) == limpiar_documento(datos.get("motor_factura"))
+            
+            es_valido = nombre_coincide and cedula_coincide and chasis_coincide and motor_coincide
 
                 orden_columnas = [
                     "nombres", "cedula", "n_motor", "n_chasis", "modelo", "placa",
