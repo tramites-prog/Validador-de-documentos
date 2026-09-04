@@ -7,9 +7,7 @@ from google.genai import types
 from pydantic import BaseModel
 from typing import Optional
 
-# -------------------------------------------------------------
-# Configuración de la interfaz
-# -------------------------------------------------------------
+
 st.set_page_config(page_title="Validador Vehicular", layout="centered")
 
 if "historial_registros" not in st.session_state:
@@ -90,9 +88,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------
-# Lectura de Claves (Nube / Local)
-# -------------------------------------------------------------
 try:
     LISTA_API_KEYS = st.secrets["API_KEYS"]
 except Exception:
@@ -101,16 +96,15 @@ except Exception:
         "TU_API_KEY_CUENTA_2"
     ]
 
-class ValidacionYPlanilla(BaseModel):
-    nombre_coincide: bool
-    cedula_coincide: bool
-    chasis_coincide: bool
-    motor_coincide: bool
-    detalle_validacion: str
-    nombres: Optional[str]
-    cedula: Optional[str]
-    n_motor: Optional[str]
-    n_chasis: Optional[str]
+class ExtraccionDocumentos(BaseModel):
+    nombre_cedula: Optional[str]
+    cedula_documento: Optional[str]
+    nombre_factura: Optional[str]
+    cedula_factura: Optional[str]
+    chasis_manifiesto: Optional[str]
+    motor_manifiesto: Optional[str]
+    chasis_factura: Optional[str]
+    motor_factura: Optional[str]
     modelo: Optional[str]
     placa: Optional[str]
     marca: Optional[str]
@@ -123,6 +117,7 @@ class ValidacionYPlanilla(BaseModel):
     correo: Optional[str]
     ciudad: Optional[str]
     tipo_de_venta: Optional[str]
+
 
 def obtener_mime_type(archivo):
     """Detecta automáticamente el tipo MIME según la extensión."""
@@ -137,6 +132,13 @@ def obtener_mime_type(archivo):
     }
     return mapa_mime.get(ext, archivo.type or 'application/octet-stream')
 
+
+def normalizar(valor):
+    """Limpia espacios y mayúsculas/minúsculas para comparar de forma justa
+    (evita falsos negativos por ' Cindy' vs 'Cindy' o 'cindy' vs 'CINDY')."""
+    return (valor or "").strip().upper()
+
+
 def procesar_con_gemini(partes_archivos, prompt):
 
     modelos = ["gemini-2.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]
@@ -150,14 +152,14 @@ def procesar_con_gemini(partes_archivos, prompt):
         client = genai.Client(api_key=key_limpia)
 
         for model in modelos:
-            for intento in range(3):  # 3 intentos por modelo en vez de 2
+            for intento in range(3): 
                 try:
                     response = client.models.generate_content(
                         model=model,
                         contents=partes_archivos + [prompt],
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
-                            response_schema=ValidacionYPlanilla,
+                            response_schema=ExtraccionDocumentos,
                         ),
                     )
                     return response
@@ -165,21 +167,17 @@ def procesar_con_gemini(partes_archivos, prompt):
                     ultimo_error = str(e)
 
                     if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                        break  # cupo agotado para este modelo, prueba el siguiente
+                        break  
                     elif "503" in str(e) or "UNAVAILABLE" in str(e):
-                        # Saturación temporal de Google: espera creciente (2s, 4s, 8s)
                         time.sleep(2 * (intento + 1))
                         continue
                     elif "404" in str(e) or "NOT_FOUND" in str(e):
-                        break  # modelo no disponible para esta llave
+                        break 
                     else:
                         break
 
     raise Exception(f"No se pudo procesar con ninguna clave. Error: {ultimo_error}")
 
-# -------------------------------------------------------------
-# Vista Principal
-# -------------------------------------------------------------
 st.markdown("""
     <div class="app-card">
         <div class="app-header">
@@ -189,8 +187,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 archivos_subidos = st.file_uploader(
-    "Selecciona o arrastra 2 o 3 archivos (PDF, JPG, PNG, WEBP)", 
-    type=["pdf", "jpg", "jpeg", "png", "webp", "heic"], 
+    "Selecciona o arrastra 2 o 3 archivos (PDF, JPG, PNG, WEBP)",
+    type=["pdf", "jpg", "jpeg", "png", "webp", "heic"],
     accept_multiple_files=True,
     key=f"uploader_{st.session_state.uploader_key}"
 )
@@ -203,60 +201,71 @@ if st.button("Procesar y Generar Fila"):
             try:
                 partes_archivos = [
                     types.Part.from_bytes(
-                        data=f.read(), 
+                        data=f.read(),
                         mime_type=obtener_mime_type(f)
                     )
                     for f in archivos_subidos
                 ]
 
                 prompt = """
-                Analiza exhaustivamente los 2 o 3 archivos adjuntos (Cédula de ciudadanía, Manifiesto de aduana y/o Factura electrónica):
+                Analiza exhaustivamente los 2 o 3 archivos adjuntos (Cédula de ciudadanía, Manifiesto de aduana y/o Factura electrónica).
 
-                REGLAS ESTRICTAS DE VALIDACIÓN (Si una sola falla, NO puedes aprobar la validación):
-                1. COMPROBACIÓN DE NOMBRE (nombre_coincide):
-                   - Compara el NOMBRE Y APELLIDOS COMPLETOS de la Cédula/Identificación contra el cliente en la Factura.
-                   - Compara letra por letra. Si difiere en un nombre, un apellido o una letra, marca nombre_coincide = False.
+                Tu única tarea es EXTRAER, con la máxima fidelidad posible, exactamente lo que está escrito en cada documento,
+                SIN corregir, SIN autocompletar y SIN decidir si coinciden entre sí (eso no te corresponde):
 
-                2. COMPROBACIÓN DE CÉDULA (cedula_coincide):
-                   - Compara el número de documento/cédula en la cédula física vs la factura.
-                   - Debe coincidir exactamente dígito por dígito. Marca cedula_coincide = False si hay diferencias.
+                1. De la CÉDULA: el nombre y apellidos completos tal como aparecen (nombre_cedula), y el número de documento (cedula_documento).
 
-                3. COMPROBACIÓN DE CHASIS / VIN (chasis_coincide):
-                   - Compara el número de Chasis/VIN del Manifiesto de aduana (SERIAL No. / VIN NO. / No. CHASIS) contra el Chasis de la Factura (CH: ...).
-                   - Compara carácter por carácter. Si un solo carácter es diferente, marca chasis_coincide = False.
+                2. De la FACTURA: el nombre y apellidos completos del cliente tal como aparecen ahí (nombre_factura), el número de
+                   cédula del cliente en la factura (cedula_factura), el número de chasis (campo "CH:") tal cual (chasis_factura),
+                   y el número de motor (campo "MT:") tal cual (motor_factura).
 
-                4. COMPROBACIÓN DE MOTOR (motor_coincide):
-                   - Compara el número de Motor del Manifiesto (MOTOR No.) contra el Motor de la Factura (MT: ...).
-                   - Compara carácter por carácter. Si un solo carácter es diferente, marca motor_coincide = False.
+                3. Del MANIFIESTO DE ADUANA: el número de Chasis/VIN (SERIAL No. / VIN NO. / No. CHASIS) tal cual (chasis_manifiesto),
+                   y el número de Motor (MOTOR No.) tal cual (motor_manifiesto).
 
-                5. DETALLE DE VALIDACIÓN (detalle_validacion):
-                   - Si alguna comprobación es False, explica claramente la diferencia. Ejemplo: "El chasis en el manifiesto es 9GJB37PF8VP227691 pero en la factura figura 9GJB37PFXVP230091".
+                Transcribe cada valor carácter por carácter exactamente como se ve en la imagen, incluyendo guiones o espacios si los hay.
+                Si algún dato no aparece en el documento, deja el campo vacío en vez de inventarlo.
 
-                6. EXTRACCIÓN DE DATOS PARA LA PLANILLA:
-                   - Extrae los datos usando la información correcta:
-                     nombres (de la Cédula), cedula, n_motor (del Manifiesto), n_chasis (del Manifiesto), modelo, placa ('AGREGAR'),
-                     marca, linea, cilindraje, valor_soat ('0'), auxiliar ('N/A'),
-                     direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
+                4. EXTRACCIÓN DE DATOS ADICIONALES PARA LA PLANILLA:
+                   modelo, placa ('AGREGAR'), marca, linea, cilindraje, valor_soat ('0'), auxiliar ('N/A'),
+                   direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
                 """
 
                 response = procesar_con_gemini(partes_archivos, prompt)
                 datos = json.loads(response.text)
 
+                nombre_coincide = normalizar(datos.get("nombre_cedula")) == normalizar(datos.get("nombre_factura"))
+                cedula_coincide = normalizar(datos.get("cedula_documento")) == normalizar(datos.get("cedula_factura"))
+                chasis_coincide = normalizar(datos.get("chasis_manifiesto")) == normalizar(datos.get("chasis_factura"))
+                motor_coincide = normalizar(datos.get("motor_manifiesto")) == normalizar(datos.get("motor_factura"))
+
+                es_valido = nombre_coincide and cedula_coincide and chasis_coincide and motor_coincide
+
                 orden_columnas = [
-                    "nombres", "cedula", "n_motor", "n_chasis", "modelo", "placa", 
-                    "marca", "linea", "cilindraje", "valor_soat", "auxiliar", 
+                    "nombres", "cedula", "n_motor", "n_chasis", "modelo", "placa",
+                    "marca", "linea", "cilindraje", "valor_soat", "auxiliar",
                     "direccion", "celular", "correo", "ciudad", "tipo_de_venta"
                 ]
 
-                nueva_fila = {col: datos.get(col, "") for col in orden_columnas}
+                datos_planilla = {
+                    "nombres": datos.get("nombre_cedula", ""),
+                    "cedula": datos.get("cedula_documento", ""),
+                    "n_motor": datos.get("motor_manifiesto", ""),
+                    "n_chasis": datos.get("chasis_manifiesto", ""),
+                    "modelo": datos.get("modelo", ""),
+                    "placa": datos.get("placa", ""),
+                    "marca": datos.get("marca", ""),
+                    "linea": datos.get("linea", ""),
+                    "cilindraje": datos.get("cilindraje", ""),
+                    "valor_soat": datos.get("valor_soat", ""),
+                    "auxiliar": datos.get("auxiliar", ""),
+                    "direccion": datos.get("direccion", ""),
+                    "celular": datos.get("celular", ""),
+                    "correo": datos.get("correo", ""),
+                    "ciudad": datos.get("ciudad", ""),
+                    "tipo_de_venta": datos.get("tipo_de_venta", ""),
+                }
 
-                # Verificación cuádruple estricta
-                es_valido = (
-                    datos.get("nombre_coincide") == True and 
-                    datos.get("cedula_coincide") == True and 
-                    datos.get("chasis_coincide") == True and 
-                    datos.get("motor_coincide") == True
-                )
+                nueva_fila = {col: datos_planilla.get(col, "") for col in orden_columnas}
 
                 if es_valido:
                     st.session_state.historial_registros.append(nueva_fila)
@@ -267,7 +276,25 @@ if st.button("Procesar y Generar Fila"):
                     }
                     st.rerun()
                 else:
-                    detalle = datos.get("detalle_validacion", "Inconsistencia detectada en los documentos.")
+                    diferencias = []
+                    if not nombre_coincide:
+                        diferencias.append(
+                            f"Nombre: '{datos.get('nombre_cedula')}' (cédula) vs '{datos.get('nombre_factura')}' (factura)"
+                        )
+                    if not cedula_coincide:
+                        diferencias.append(
+                            f"Cédula: '{datos.get('cedula_documento')}' (cédula) vs '{datos.get('cedula_factura')}' (factura)"
+                        )
+                    if not chasis_coincide:
+                        diferencias.append(
+                            f"Chasis: '{datos.get('chasis_manifiesto')}' (manifiesto) vs '{datos.get('chasis_factura')}' (factura)"
+                        )
+                    if not motor_coincide:
+                        diferencias.append(
+                            f"Motor: '{datos.get('motor_manifiesto')}' (manifiesto) vs '{datos.get('motor_factura')}' (factura)"
+                        )
+                    detalle = " | ".join(diferencias) if diferencias else "Inconsistencia detectada en los documentos."
+
                     st.session_state.ultimo_mensaje = {
                         "tipo": "advertencia",
                         "texto": f"<b>Descuadre Detectado:</b> {detalle}<br><i>Atención: Este registro NO se agregó al área de copiado.</i>"
@@ -291,17 +318,14 @@ if st.session_state.ultimo_mensaje:
             </div>
         """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------
-# ÁREA DE COPIADO
-# -------------------------------------------------------------
 if st.session_state.historial_registros:
     st.markdown("---")
     st.markdown('<div class="copy-box-title">Registros acumulados para Excel</div>', unsafe_allow_html=True)
     st.markdown('<div class="copy-box-desc">Haz clic en el icono de copiar (arriba a la derecha de la caja negra) y presiona Ctrl+V en tu Excel:</div>', unsafe_allow_html=True)
 
     orden_columnas = [
-        "nombres", "cedula", "n_motor", "n_chasis", "modelo", "placa", 
-        "marca", "linea", "cilindraje", "valor_soat", "auxiliar", 
+        "nombres", "cedula", "n_motor", "n_chasis", "modelo", "placa",
+        "marca", "linea", "cilindraje", "valor_soat", "auxiliar",
         "direccion", "celular", "correo", "ciudad", "tipo_de_venta"
     ]
 
