@@ -246,7 +246,7 @@ if st.button("Procesar y Generar Fila"):
                    direccion, celular, correo, ciudad, tipo_de_venta ('CREDITO' o 'CONTADO').
                 """
 
-            response = procesar_con_gemini(partes_archivos, prompt)
+                response = procesar_con_gemini(partes_archivos, prompt)
                 datos = json.loads(response.text)
 
                 nombre_coincide = normalizar_texto(datos.get("nombre_cedula")) == normalizar_texto(datos.get("nombre_factura"))
