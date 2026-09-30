@@ -170,7 +170,7 @@ def comparar_nombres_exactos_sin_orden(nombre_cedula, nombre_factura):
     es_subconjunto_valido = palabras_factura.issubset(palabras_cedula) or palabras_cedula.issubset(palabras_factura)
     porcentaje_coincidencia = len(palabras_coincidentes) / max(len(palabras_cedula), len(palabras_factura))
 
-    return es_subconjunto_valido and porcentaje_coincidencia >= 0.5
+    return es_subconjunto_valido or porcentaje_coincidencia >= 0.8
 
 
 def procesar_con_gemini(partes_archivos, prompt):
