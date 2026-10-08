@@ -101,6 +101,7 @@ class ExtraccionDocumentos(BaseModel):
     nombre_cedula: Optional[str]
     cedula_documento: Optional[str]
     fecha_nacimiento: Optional[str]
+    sexo: Optional[str]
     nombre_factura: Optional[str]
     cedula_factura: Optional[str]
     chasis_manifiesto: Optional[str]
@@ -253,6 +254,9 @@ if st.button("Procesar y Generar Fila"):
                    - extrae la fecha de nacimiento (fecha_nacimiento) y escríbela en formato DD/MM/AAAA
                      (si el mes aparece en letras o abreviado, como FEB, conviértelo a número: 11-FEB-1966 -> 11/02/1966).
                      Si el documento no trae fecha de nacimiento (por ejemplo un RUT/NIT de empresa) o no se alcanza a ver, déjala vacía.
+                   - extrae el sexo (sexo) que aparece en el documento y escríbelo con la palabra completa:
+                     si el documento dice 'M' escribe 'MASCULINO', y si dice 'F' escribe 'FEMENINO'.
+                     Si el documento no trae sexo (por ejemplo un RUT/NIT de empresa) o no se alcanza a ver, déjalo vacío.
                 
                 2. De la FACTURA ELECTRONICA:
                    - extrae el nombre completo del cliente o razón social (nombre_factura).
@@ -280,7 +284,7 @@ if st.button("Procesar y Generar Fila"):
                 es_valido = nombre_coincide and cedula_coincide and chasis_coincide and motor_coincide
 
                 orden_columnas = [
-                    "nombres", "cedula", "fecha_nacimiento", "n_motor", "n_chasis", "modelo", "placa",
+                    "nombres", "cedula", "fecha_nacimiento", "sexo", "n_motor", "n_chasis", "modelo", "placa",
                     "marca", "linea", "cilindraje", "valor_soat", "auxiliar",
                     "direccion", "celular", "correo", "ciudad", "tipo_de_venta"
                 ]
@@ -289,6 +293,7 @@ if st.button("Procesar y Generar Fila"):
                     "nombres": datos.get("nombre_cedula", ""),
                     "cedula": datos.get("cedula_documento", ""),
                     "fecha_nacimiento": datos.get("fecha_nacimiento", ""),
+                    "sexo": datos.get("sexo", ""),
                     "n_motor": datos.get("motor_manifiesto", ""),
                     "n_chasis": datos.get("chasis_manifiesto", ""),
                     "modelo": datos.get("modelo", ""),
@@ -363,7 +368,7 @@ if st.session_state.historial_registros:
     st.markdown('<div class="copy-box-desc">Haz clic en el icono de copiar (arriba a la derecha de la caja negra) y presiona Ctrl+V en tu Excel:</div>', unsafe_allow_html=True)
 
     orden_columnas = [
-        "nombres", "cedula", "fecha_nacimiento", "n_motor", "n_chasis", "modelo", "placa",
+        "nombres", "cedula", "fecha_nacimiento", "sexo", "n_motor", "n_chasis", "modelo", "placa",
         "marca", "linea", "cilindraje", "valor_soat", "auxiliar",
         "direccion", "celular", "correo", "ciudad", "tipo_de_venta"
     ]
