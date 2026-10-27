@@ -169,8 +169,8 @@ def comparar_nombres_exactos_sin_orden(nombre_cedula, nombre_factura):
     if not nombre_cedula or not nombre_factura:
         return False
 
-    palabras_cedula = set(nombre_cedula.upper().split())
-    palabras_factura = set(nombre_factura.upper().split())
+    palabras_cedula = set(re.sub(r'[^\w\s]', '', nombre_cedula.upper()).split())
+    palabras_factura = set(re.sub(r'[^\w\s]', '', nombre_factura.upper()).split())
 
     if not palabras_cedula or not palabras_factura:
         return False
