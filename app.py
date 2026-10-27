@@ -155,6 +155,14 @@ def limpiar_documento(valor):
 
     return re.sub(r'[^A-Z0-9]', '', valor.upper().strip())
 
+def limpiar_nit(valor):
+    """Quita el dígito de verificación (ej. 901795547-3 -> 901795547)."""
+    if not valor:
+        return ""
+    valor = valor.upper().strip()
+    valor = re.sub(r'\s*-\s*\d$', '', valor)  # elimina "-D" al final
+    return re.sub(r'[^A-Z0-9]', '', valor)
+
 def comparar_nombres_exactos_sin_orden(nombre_cedula, nombre_factura):
     """Verifica que todas las palabras presentes en la factura estén en la cédula
     exactamente iguales (incluyendo 'DE', 'LA', etc.), sin importar el orden."""
@@ -251,6 +259,7 @@ if st.button("Procesar y Generar Fila"):
                 1. Del DOCUMENTO DE IDENTIFICACIÓN (Cédula de ciudadanía, Cédula de extranjería, Tarjeta de identidad, Pasaporte o RUT/NIT):
                    - extrae el nombre completo o razón social tal cual aparece (nombre_cedula).
                    - extrae el número de documento tal cual aparece, incluyendo puntos si los tiene (cedula_documento).
+                   - Si es un RUT/NIT de empresa, en cedula_documento escribe SOLO el NIT, sin el dígito de verificación (DV).
                    - extrae la fecha de nacimiento (fecha_nacimiento) y escríbela en formato DD/MM/AAAA
                      (si el mes aparece en letras o abreviado, como FEB, conviértelo a número: 11-FEB-1966 -> 11/02/1966).
                      Si el documento no trae fecha de nacimiento (por ejemplo un RUT/NIT de empresa) o no se alcanza a ver, déjala vacía.
@@ -277,7 +286,7 @@ if st.button("Procesar y Generar Fila"):
                 datos = json.loads(response.text)
 
                 nombre_coincide = comparar_nombres_exactos_sin_orden(datos.get("nombre_cedula"), datos.get("nombre_factura"))
-                cedula_coincide = limpiar_documento(datos.get("cedula_documento")) == limpiar_documento(datos.get("cedula_factura"))
+                cedula_coincide = limpiar_nit(datos.get("cedula_documento")) == limpiar_nit(datos.get("cedula_factura"))
                 chasis_coincide = limpiar_documento(datos.get("chasis_manifiesto")) == limpiar_documento(datos.get("chasis_factura"))
                 motor_coincide = limpiar_documento(datos.get("motor_manifiesto")) == limpiar_documento(datos.get("motor_factura"))
                 
